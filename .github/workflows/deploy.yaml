@@ -1,7 +1,7 @@
 name: CI/CD
 
 # Merging to `main` deploys to the production dltHub workspace. The secret and
-# variables are created by `.github/setup.sh`.
+# variables are created by `.github/setup.py`.
 on:
   push:
     branches: [main]
