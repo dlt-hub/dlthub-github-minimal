@@ -4,7 +4,12 @@
 # ///
 """One-time setup: connect a repository created from this template to dltHub CI/CD.
 
-    uv run --env-file .env .github/setup.py
+    uv run --env-file .env https://raw.githubusercontent.com/dlt-hub/dlthub-github-minimal/main/.github/setup.py [repo-name] [--public]
+
+Creates a GitHub repository from the template (private by default), then sets everything up in it:
+- empty directory (a lone .env is ignored): the template is copied to "." and the repo is named
+  after the directory;
+- non-empty directory: the template is copied to ./<repo-name> (asked for if not given).
 
 Env: DLTHUB_API_KEY (required): a user-level key, belonging to a single organization.
 """
@@ -12,6 +17,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 import dlthub_sdk
 import httpx
@@ -35,9 +42,40 @@ def check_tools():
         run(tool, "--version")
 
 
+TEMPLATE = "dlt-hub/dlthub-github-minimal"
+
+
 def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     check_tools()
-        
+    run("gh", "auth", "status")
+
+    here = Path.cwd()
+    if not [p for p in here.iterdir() if p.name != ".env"]:
+        name, target = here.name, here  # empty directory: copy to "."
+    else:
+        name = args[0] if args else input("Repository name: ").strip()
+        if not name:
+            sys.exit("setup failed: a repository name is required")
+        target = here / name.split("/")[-1]
+        if target.exists():
+            sys.exit(f"setup failed: {target} already exists")
+
+    step(f"creating {name} from template {TEMPLATE}")
+    visibility = "--public" if "--public" in sys.argv else "--private"
+    url = run("gh", "repo", "create", name, "--template", TEMPLATE, visibility)
+    target.mkdir(exist_ok=True)
+    os.chdir(target)
+    clone_url = url.split()[-1] + ".git"
+    run("git", "init", "--quiet")
+    run("git", "remote", "add", "origin", clone_url)
+    for _ in range(10):  # the template copy is asynchronous on GitHub
+        if run("git", "fetch", "--quiet", "origin", check=False) or run("git", "ls-remote", "--heads", "origin", check=False):
+            break
+        time.sleep(2)
+    branch = run("git", "ls-remote", "--symref", "origin", "HEAD").split()[1].removeprefix("refs/heads/")
+    run("git", "checkout", "--quiet", "-B", branch, f"origin/{branch}")
+
     repo = run("gh", "repo", "view", "--json", "nameWithOwner,defaultBranchRef")
     repo = json.loads(repo)
     slug, branch = repo["nameWithOwner"], repo["defaultBranchRef"]["name"]
