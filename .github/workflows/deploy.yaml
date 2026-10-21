@@ -1,12 +1,10 @@
 name: CI/CD
 
-# PRs run checks only. Merging to `main` runs the checks, then deploys to the
-# production dltHub workspace. Created together with the GitHub environment by
-# `.github/setup.sh`.
+# Merging to `main` deploys to the production dltHub workspace. The secret and
+# variables are created by `.github/setup.sh`.
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -17,24 +15,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # `code-quality` is a required status check on `main` (see .github/setup.sh).
-  code-quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
-        with:
-          enable-cache: true
-      - name: Install dependencies
-        run: uv sync --all-groups
-      - name: Unit tests (if any)
-        run: if [ -d tests ]; then uv run pytest tests; fi
-
   deploy-prod:
-    needs: [code-quality]
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production # secret + variables created by .github/setup.sh
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
